@@ -1,0 +1,87 @@
+/* ApexCharts dark theme overrides */
+.chart-container {
+  width: 100%;
+  min-height: 300px;
+  position: relative;
+}
+
+.chart-container.small {
+  min-height: 200px;
+}
+
+/* Override ApexCharts tooltip */
+.apexcharts-tooltip {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.apexcharts-tooltip-title {
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  padding: 8px 12px !important;
+}
+
+.apexcharts-tooltip-text {
+  font-family: var(--font-sans) !important;
+  font-size: 0.8125rem !important;
+}
+
+.apexcharts-tooltip-text-y-value {
+  font-weight: 600 !important;
+}
+
+/* ApexCharts legend */
+.apexcharts-legend-text {
+  color: var(--text-secondary) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 0.8125rem !important;
+}
+
+/* Funnel specific */
+.funnel-container {
+  padding: 16px;
+}
+
+.funnel-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  position: relative;
+}
+
+.funnel-bar {
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: white;
+  transition: width var(--transition-slow);
+}
+
+.funnel-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  min-width: 140px;
+}
+
+.funnel-value {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.funnel-rate {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 8px;
+}

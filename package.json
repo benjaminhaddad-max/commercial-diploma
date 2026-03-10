@@ -1,0 +1,17 @@
+{
+  "name": "commercial-diploma",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "apexcharts": "^4.3.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

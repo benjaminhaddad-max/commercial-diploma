@@ -1,0 +1,70 @@
+:root {
+  /* Background layers */
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-tertiary: #242833;
+  --bg-elevated: #2a2e3b;
+  --bg-hover: #31364a;
+
+  /* Text */
+  --text-primary: #f0f0f5;
+  --text-secondary: #9ca3b4;
+  --text-muted: #6b7280;
+  --text-inverse: #0f1117;
+
+  /* Accent colors */
+  --accent-blue: #4f8cff;
+  --accent-blue-dim: rgba(79, 140, 255, 0.15);
+  --accent-green: #34d399;
+  --accent-green-dim: rgba(52, 211, 153, 0.15);
+  --accent-red: #f87171;
+  --accent-red-dim: rgba(248, 113, 113, 0.15);
+  --accent-yellow: #fbbf24;
+  --accent-yellow-dim: rgba(251, 191, 36, 0.15);
+  --accent-purple: #a78bfa;
+  --accent-purple-dim: rgba(167, 139, 250, 0.15);
+  --accent-orange: #fb923c;
+  --accent-orange-dim: rgba(251, 146, 60, 0.15);
+
+  /* Chart palette */
+  --chart-1: #4f8cff;
+  --chart-2: #34d399;
+  --chart-3: #a78bfa;
+  --chart-4: #fb923c;
+  --chart-5: #f87171;
+  --chart-6: #fbbf24;
+
+  /* Score colors */
+  --score-good: #34d399;
+  --score-medium: #fbbf24;
+  --score-bad: #f87171;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Spacing */
+  --sidebar-width: 260px;
+  --header-height: 64px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
+}
