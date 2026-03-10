@@ -101,17 +101,39 @@ async function getPipelines() {
 // Pipeline & stage IDs for "Diploma Santé 2026-2027"
 const PIPELINE_ID = '2313043166';
 const STAGES = {
-  rdvPris: '3165428980',       // RDV DÉCOUVERTE PRIS
-  rdvEffectues: '3165428981',  // DÉLAI DE RÉFLEXION (= RDV happened)
-  dossiersRealises: '3165428982', // Préinscription effectuée
+  aReplanifier: '3165428979',        // 📞 A REPLANIFIER (order 0)
+  rdvDecouvertePris: '3165428980',   // 📅 RDV DÉCOUVERTE PRIS (order 1)
+  delaiReflexion: '3165428981',      // ⏳ DÉLAI DE RÉFLEXION (order 2)
+  panierAbandonne: '3167730913',     // ❌ Panier Abandonné (order 3)
+  preinscription: '3165428982',      // 📂 Préinscription effectuée (order 4)
+  finalisation: '3165428983',        // 📋 Finalisation (order 5)
+  inscriptionConfirmee: '3165428984',// ✅ Inscription confirmée (order 6)
+  fermePerdu: '3165428985',          // 🛑 Fermé perdu (order 7)
 };
+
+// RDV effectués = the meeting actually happened (stage ≥ Délai de réflexion)
+const STAGES_RDV_EFFECTUE = new Set([
+  STAGES.delaiReflexion,
+  STAGES.panierAbandonne,
+  STAGES.preinscription,
+  STAGES.finalisation,
+  STAGES.inscriptionConfirmee,
+  STAGES.fermePerdu,
+]);
+
+// Dossiers finalisés = positive progression past préinscription
+const STAGES_DOSSIER_FINALISE = new Set([
+  STAGES.preinscription,
+  STAGES.finalisation,
+  STAGES.inscriptionConfirmee,
+]);
 
 /**
  * Get deal stats for a period: counts by funnel stage + per-owner breakdown
  * Deals created in [from, to] in the Diploma pipeline
- * @param {Date} from
- * @param {Date} to
- * @returns {{ rdvPris, rdvEffectues, dossiersRealises, byOwner }}
+ * - RDV pris = all deals except "A replanifier" (no RDV yet)
+ * - RDV effectués = deals where the meeting happened (Délai de réflexion+)
+ * - Dossiers finalisés = Préinscription + Finalisation + Inscription confirmée
  */
 async function getDealStats(from, to) {
   const fromMs = from.getTime();
@@ -129,27 +151,23 @@ async function getDealStats(from, to) {
     sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
   });
 
-  const advancedStages = new Set([STAGES.rdvEffectues, STAGES.dossiersRealises]);
-
-  const rdvPris = deals.length;
-  const rdvEffectues = deals.filter(d => advancedStages.has(d.properties.dealstage)).length;
-  const dossiersRealises = deals.filter(d => d.properties.dealstage === STAGES.dossiersRealises).length;
+  // Exclude "A replanifier" — those don't have an RDV yet
+  const rdvPris = deals.filter(d => d.properties.dealstage !== STAGES.aReplanifier).length;
+  const rdvEffectues = deals.filter(d => STAGES_RDV_EFFECTUE.has(d.properties.dealstage)).length;
+  const dossiersRealises = deals.filter(d => STAGES_DOSSIER_FINALISE.has(d.properties.dealstage)).length;
 
   // Per-owner breakdown
   const byOwner = {};
   deals.forEach(d => {
     const ownerId = d.properties.hubspot_owner_id;
+    const stage = d.properties.dealstage;
     if (!ownerId) return;
     if (!byOwner[ownerId]) {
       byOwner[ownerId] = { ownerId, rdvPris: 0, rdvEffectues: 0, dossiersRealises: 0 };
     }
-    byOwner[ownerId].rdvPris++;
-    if (advancedStages.has(d.properties.dealstage)) {
-      byOwner[ownerId].rdvEffectues++;
-    }
-    if (d.properties.dealstage === STAGES.dossiersRealises) {
-      byOwner[ownerId].dossiersRealises++;
-    }
+    if (stage !== STAGES.aReplanifier) byOwner[ownerId].rdvPris++;
+    if (STAGES_RDV_EFFECTUE.has(stage)) byOwner[ownerId].rdvEffectues++;
+    if (STAGES_DOSSIER_FINALISE.has(stage)) byOwner[ownerId].dossiersRealises++;
   });
 
   return { rdvPris, rdvEffectues, dossiersRealises, byOwner, totalDeals: deals.length };
