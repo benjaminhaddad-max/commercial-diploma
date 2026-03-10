@@ -1,6 +1,7 @@
 const { verifyAuth, handleCors } = require('./_lib/auth');
 const { getSupabase } = require('./_lib/supabase');
 const { fetchTeamCalls } = require('./_lib/aircall');
+const { getDealStats, getOwnerMap } = require('./_lib/hubspot');
 
 // KPI thresholds (green / orange / red)
 const THRESHOLDS = {
@@ -30,7 +31,7 @@ module.exports = async function handler(req, res) {
     const now = new Date();
     const { from, to, prevFrom, prevTo, days } = getDateRange(period, now);
 
-    // Fetch calls from calls_log
+    // Fetch calls from Supabase + HubSpot deals in parallel
     let query = supabase
       .from('calls_log')
       .select('*')
@@ -41,7 +42,15 @@ module.exports = async function handler(req, res) {
       query = query.eq('agent_aircall_id', parseInt(agent));
     }
 
-    let { data: calls, error } = await query;
+    // HubSpot deal stats (non-blocking — dashboard works even if HubSpot fails)
+    const hubspotPromise = getDealStats(from, to).catch(err => {
+      console.error('HubSpot getDealStats error:', err.message);
+      return null;
+    });
+
+    const [dbResult, hubspot] = await Promise.all([query, hubspotPromise]);
+
+    let { data: calls, error } = dbResult;
     if (error) {
       console.error('DB error:', error);
       return res.status(500).json({ error: 'Erreur base de données' });
@@ -153,6 +162,7 @@ module.exports = async function handler(req, res) {
       agents,
       dailySeries,
       outcomes,
+      hubspot: hubspot || { rdvPris: 0, rdvEffectues: 0, dossiersRealises: 0, byOwner: {} },
     });
   } catch (err) {
     console.error('Aggregate stats error:', err);

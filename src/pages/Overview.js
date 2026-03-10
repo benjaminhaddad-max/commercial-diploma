@@ -44,6 +44,7 @@ export default async function OverviewPage(app) {
     const t = data.trends;
     const agents = data.agents || [];
     const outcomes = data.outcomes || {};
+    const hs = data.hubspot || {};
 
     const content = document.getElementById('overviewContent');
     if (!content) return;
@@ -78,12 +79,12 @@ export default async function OverviewPage(app) {
         })}
         ${renderStatCard({
           label: 'RDV pris',
-          value: '—',
+          value: formatNumber(hs.rdvPris || 0),
           color: 'var(--accent-purple)',
         })}
         ${renderStatCard({
           label: 'Dossiers finalisés',
-          value: '—',
+          value: formatNumber(hs.dossiersRealises || 0),
           color: 'var(--accent-green)',
         })}
         ${renderStatCard({
@@ -128,7 +129,7 @@ export default async function OverviewPage(app) {
     `;
 
     renderCallsChart(data.dailySeries || []);
-    renderFunnel(s);
+    renderFunnel(s, hs);
     renderMiniLeaderboard(agents);
     renderOutcomesChart(outcomes);
   }
@@ -197,16 +198,16 @@ export default async function OverviewPage(app) {
     charts.push(chart);
   }
 
-  function renderFunnel(s) {
+  function renderFunnel(s, hs) {
     const container = document.getElementById('funnelContainer');
     if (!container) return;
 
     const steps = [
       { label: 'Appels sortants', value: s.outbound || 0, color: 'var(--accent-blue)' },
       { label: 'Décrochés', value: s.answered || 0, color: 'var(--chart-2)' },
-      { label: 'RDV pris', value: 0, color: 'var(--accent-orange)' },
-      { label: 'RDV effectués', value: 0, color: 'var(--chart-4)' },
-      { label: 'Dossiers finalisés', value: 0, color: 'var(--accent-green)' },
+      { label: 'RDV pris', value: hs.rdvPris || 0, color: 'var(--accent-orange)' },
+      { label: 'RDV effectués', value: hs.rdvEffectues || 0, color: 'var(--chart-4)' },
+      { label: 'Dossiers finalisés', value: hs.dossiersRealises || 0, color: 'var(--accent-green)' },
     ];
 
     const maxVal = steps[0].value || 1;

@@ -98,10 +98,90 @@ async function getPipelines() {
   return data.results || [];
 }
 
+// Pipeline & stage IDs for "Diploma Santé 2026-2027"
+const PIPELINE_ID = '2313043166';
+const STAGES = {
+  rdvPris: '3165428980',       // RDV DÉCOUVERTE PRIS
+  rdvEffectues: '3165428981',  // DÉLAI DE RÉFLEXION (= RDV happened)
+  dossiersRealises: '3165428982', // Préinscription effectuée
+};
+
+/**
+ * Get deal stats for a period: counts by funnel stage + per-owner breakdown
+ * Deals created in [from, to] in the Diploma pipeline
+ * @param {Date} from
+ * @param {Date} to
+ * @returns {{ rdvPris, rdvEffectues, dossiersRealises, byOwner }}
+ */
+async function getDealStats(from, to) {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+
+  const deals = await searchObjects('deals', {
+    filterGroups: [{
+      filters: [
+        { propertyName: 'pipeline', operator: 'EQ', value: PIPELINE_ID },
+        { propertyName: 'createdate', operator: 'GTE', value: String(fromMs) },
+        { propertyName: 'createdate', operator: 'LTE', value: String(toMs) },
+      ],
+    }],
+    properties: ['dealstage', 'createdate', 'hubspot_owner_id', 'dealname'],
+    sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+  });
+
+  const advancedStages = new Set([STAGES.rdvEffectues, STAGES.dossiersRealises]);
+
+  const rdvPris = deals.length;
+  const rdvEffectues = deals.filter(d => advancedStages.has(d.properties.dealstage)).length;
+  const dossiersRealises = deals.filter(d => d.properties.dealstage === STAGES.dossiersRealises).length;
+
+  // Per-owner breakdown
+  const byOwner = {};
+  deals.forEach(d => {
+    const ownerId = d.properties.hubspot_owner_id;
+    if (!ownerId) return;
+    if (!byOwner[ownerId]) {
+      byOwner[ownerId] = { ownerId, rdvPris: 0, rdvEffectues: 0, dossiersRealises: 0 };
+    }
+    byOwner[ownerId].rdvPris++;
+    if (advancedStages.has(d.properties.dealstage)) {
+      byOwner[ownerId].rdvEffectues++;
+    }
+    if (d.properties.dealstage === STAGES.dossiersRealises) {
+      byOwner[ownerId].dossiersRealises++;
+    }
+  });
+
+  return { rdvPris, rdvEffectues, dossiersRealises, byOwner, totalDeals: deals.length };
+}
+
+/**
+ * Get HubSpot owners mapped by ID → { firstName, lastName, email }
+ * Used to match HubSpot owners to Aircall agents by name
+ */
+async function getOwnerMap() {
+  const owners = await getOwners();
+  const map = {};
+  owners.forEach(o => {
+    map[o.id] = {
+      id: o.id,
+      firstName: o.firstName,
+      lastName: o.lastName,
+      email: o.email,
+      fullName: `${o.firstName || ''} ${o.lastName || ''}`.trim(),
+    };
+  });
+  return map;
+}
+
 module.exports = {
   hubspotFetch,
   searchObjects,
   getOwners,
+  getOwnerMap,
   getPipelineStages,
   getPipelines,
+  getDealStats,
+  PIPELINE_ID,
+  STAGES,
 };
