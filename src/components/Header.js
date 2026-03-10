@@ -4,7 +4,14 @@ import { icon } from '../utils/icons.js';
  * Render header with title and date filters
  */
 export function renderHeader(title, options = {}) {
-  const { showFilters = true, showRefresh = true } = options;
+  const { showFilters = true, showRefresh = true, activePeriod = 'today' } = options;
+
+  const periods = [
+    { key: 'today', label: "Aujourd'hui" },
+    { key: 'week', label: 'Cette semaine' },
+    { key: 'month', label: 'Ce mois' },
+    { key: 'last30', label: '30 jours' },
+  ];
 
   return `
     <header class="header">
@@ -12,10 +19,7 @@ export function renderHeader(title, options = {}) {
       <div class="header-actions">
         ${showFilters ? `
           <div class="filter-bar">
-            <button class="filter-btn active" data-period="today">Aujourd'hui</button>
-            <button class="filter-btn" data-period="week">Cette semaine</button>
-            <button class="filter-btn" data-period="month">Ce mois</button>
-            <button class="filter-btn" data-period="last30">30 jours</button>
+            ${periods.map(p => `<button class="filter-btn${p.key === activePeriod ? ' active' : ''}" data-period="${p.key}">${p.label}</button>`).join('')}
           </div>
         ` : ''}
         ${showRefresh ? `

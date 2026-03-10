@@ -12,123 +12,120 @@ export default async function OverviewPage(app) {
   if (!profile) return;
 
   let currentPeriod = 'today';
+  let charts = []; // track ApexCharts instances for cleanup
 
-  function renderSkeleton() {
-    app.innerHTML = `
-      <div class="dashboard-layout">
-        ${renderSidebar(profile)}
-        <div class="dashboard-main">
-          ${renderHeader('Vue d\'ensemble')}
-          <div class="dashboard-content">
-            <div class="grid grid-6" style="margin-bottom:24px;">
-              ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
-              ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
-            </div>
-            <div style="text-align:center;padding:60px 0;color:var(--text-muted);">
-              Chargement des donn\u00e9es...
-            </div>
+  // Render full layout once
+  app.innerHTML = `
+    <div class="dashboard-layout">
+      ${renderSidebar(profile)}
+      <div class="dashboard-main">
+        ${renderHeader('Vue d\'ensemble', { activePeriod: currentPeriod })}
+        <div class="dashboard-content" id="overviewContent">
+          <div style="text-align:center;padding:60px 0;color:var(--text-muted);">
+            Chargement des données...
           </div>
         </div>
       </div>
-    `;
-    bindSidebarEvents();
-    bindHeaderEvents(
-      (period) => { currentPeriod = period; loadData(); },
-      () => loadData()
-    );
+    </div>
+  `;
+  bindSidebarEvents();
+  bindHeaderEvents(
+    (period) => { currentPeriod = period; loadData(); },
+    () => loadData()
+  );
+
+  function destroyCharts() {
+    charts.forEach(c => { try { c.destroy(); } catch (_) {} });
+    charts = [];
   }
 
-  function render(data) {
+  function renderContent(data) {
     const s = data.stats;
     const t = data.trends;
     const agents = data.agents || [];
     const outcomes = data.outcomes || {};
 
-    app.innerHTML = `
-      <div class="dashboard-layout">
-        ${renderSidebar(profile)}
-        <div class="dashboard-main">
-          ${renderHeader('Vue d\'ensemble')}
-          <div class="dashboard-content">
-            <!-- KPI Row -->
-            <div class="grid grid-6" style="margin-bottom:24px;">
-              ${renderStatCard({
-                label: 'Appels sortants',
-                value: formatNumber(s.outbound),
-                change: t.outbound,
-                color: 'var(--accent-blue)',
-              })}
-              ${renderStatCard({
-                label: 'Taux de d\u00e9croch\u00e9',
-                value: formatPercent(s.pickupRate, 0),
-                change: t.decroch\u00e9,
-                score: scoreColor(s.pickupRate, 40, 25),
-              })}
-              ${renderStatCard({
-                label: 'Dur\u00e9e moyenne',
-                value: formatDuration(s.avgDuration),
-                change: t.duration,
-                score: scoreColor(s.avgDuration / 60, 10, 5),
-              })}
-              ${renderStatCard({
-                label: 'RDV pris',
-                value: '—',
-                color: 'var(--accent-purple)',
-              })}
-              ${renderStatCard({
-                label: 'Dossiers finalis\u00e9s',
-                value: '—',
-                color: 'var(--accent-green)',
-              })}
-              ${renderStatCard({
-                label: 'Score \u00e9quipe',
-                value: s.score + '/100',
-                change: null,
-                score: scoreColor(s.score, 70, 50),
-              })}
-            </div>
+    const content = document.getElementById('overviewContent');
+    if (!content) return;
 
-            <!-- Charts Row -->
-            <div class="grid grid-2" style="margin-bottom:24px;">
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title">Volume d'appels</span>
-                </div>
-                <div id="callsChart" class="chart-container"></div>
-              </div>
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title">Funnel de conversion</span>
-                </div>
-                <div id="funnelContainer" class="funnel-container"></div>
-              </div>
-            </div>
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.period === currentPeriod);
+    });
 
-            <!-- Bottom Row -->
-            <div class="grid grid-2">
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title">Top 5 — Score composite</span>
-                </div>
-                <div id="miniLeaderboard"></div>
-              </div>
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title">Outcomes des appels</span>
-                </div>
-                <div id="outcomesChart" class="chart-container small"></div>
-              </div>
-            </div>
+    destroyCharts();
+
+    content.innerHTML = `
+      <!-- KPI Row -->
+      <div class="grid grid-6" style="margin-bottom:24px;">
+        ${renderStatCard({
+          label: 'Appels sortants',
+          value: formatNumber(s.outbound),
+          change: t.outbound,
+          color: 'var(--accent-blue)',
+        })}
+        ${renderStatCard({
+          label: 'Taux de décroché',
+          value: formatPercent(s.pickupRate, 0),
+          change: t.décroché,
+          score: scoreColor(s.pickupRate, 40, 25),
+        })}
+        ${renderStatCard({
+          label: 'Durée moyenne',
+          value: formatDuration(s.avgDuration),
+          change: t.duration,
+          score: scoreColor(s.avgDuration / 60, 10, 5),
+        })}
+        ${renderStatCard({
+          label: 'RDV pris',
+          value: '—',
+          color: 'var(--accent-purple)',
+        })}
+        ${renderStatCard({
+          label: 'Dossiers finalisés',
+          value: '—',
+          color: 'var(--accent-green)',
+        })}
+        ${renderStatCard({
+          label: 'Score équipe',
+          value: s.score + '/100',
+          change: null,
+          score: scoreColor(s.score, 70, 50),
+        })}
+      </div>
+
+      <!-- Charts Row -->
+      <div class="grid grid-2" style="margin-bottom:24px;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Volume d'appels</span>
           </div>
+          <div id="callsChart" class="chart-container"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Funnel de conversion</span>
+          </div>
+          <div id="funnelContainer" class="funnel-container"></div>
+        </div>
+      </div>
+
+      <!-- Bottom Row -->
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Top 5 — Score composite</span>
+          </div>
+          <div id="miniLeaderboard"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Outcomes des appels</span>
+          </div>
+          <div id="outcomesChart" class="chart-container small"></div>
         </div>
       </div>
     `;
-
-    bindSidebarEvents();
-    bindHeaderEvents(
-      (period) => { currentPeriod = period; loadData(); },
-      () => loadData()
-    );
 
     renderCallsChart(data.dailySeries || []);
     renderFunnel(s);
@@ -145,7 +142,7 @@ export default async function OverviewPage(app) {
     const outbound = series.map(d => d.outbound);
     const inbound = series.map(d => d.inbound);
 
-    new ApexCharts(el, {
+    const chart = new ApexCharts(el, {
       chart: { type: 'area', height: 280, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter', toolbar: { show: false } },
       theme: { mode: 'dark' },
       colors: ['#4f8cff', '#a78bfa'],
@@ -167,7 +164,9 @@ export default async function OverviewPage(app) {
       grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
       dataLabels: { enabled: false },
       tooltip: { theme: 'dark' },
-    }).render();
+    });
+    chart.render();
+    charts.push(chart);
   }
 
   function renderOutcomesChart(outcomes) {
@@ -179,11 +178,11 @@ export default async function OverviewPage(app) {
     const values = Object.values(outcomes);
 
     if (values.every(v => v === 0)) {
-      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Pas de donn\u00e9es</div>';
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Pas de données</div>';
       return;
     }
 
-    new ApexCharts(el, {
+    const chart = new ApexCharts(el, {
       chart: { type: 'donut', height: 250, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter' },
       theme: { mode: 'dark' },
       colors: ['#34d399', '#f87171', '#fbbf24'],
@@ -193,7 +192,9 @@ export default async function OverviewPage(app) {
       dataLabels: { enabled: false },
       stroke: { width: 0 },
       legend: { position: 'bottom', fontSize: '12px', labels: { colors: '#9ca3b4' } },
-    }).render();
+    });
+    chart.render();
+    charts.push(chart);
   }
 
   function renderFunnel(s) {
@@ -202,10 +203,10 @@ export default async function OverviewPage(app) {
 
     const steps = [
       { label: 'Appels sortants', value: s.outbound || 0, color: 'var(--accent-blue)' },
-      { label: 'D\u00e9croch\u00e9s', value: s.answered || 0, color: 'var(--chart-2)' },
+      { label: 'Décrochés', value: s.answered || 0, color: 'var(--chart-2)' },
       { label: 'RDV pris', value: 0, color: 'var(--accent-orange)' },
-      { label: 'RDV effectu\u00e9s', value: 0, color: 'var(--chart-4)' },
-      { label: 'Dossiers finalis\u00e9s', value: 0, color: 'var(--accent-green)' },
+      { label: 'RDV effectués', value: 0, color: 'var(--chart-4)' },
+      { label: 'Dossiers finalisés', value: 0, color: 'var(--accent-green)' },
     ];
 
     const maxVal = steps[0].value || 1;
@@ -235,7 +236,7 @@ export default async function OverviewPage(app) {
     const top5 = agents.slice(0, 5);
 
     if (top5.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">Pas de donn\u00e9es</div>';
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">Pas de données</div>';
       return;
     }
 
@@ -257,21 +258,37 @@ export default async function OverviewPage(app) {
   }
 
   async function loadData() {
-    renderSkeleton();
+    const content = document.getElementById('overviewContent');
+    if (content) {
+      destroyCharts();
+      content.innerHTML = `
+        <div class="grid grid-6" style="margin-bottom:24px;">
+          ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
+          ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
+        </div>
+        <div style="text-align:center;padding:60px 0;color:var(--text-muted);">
+          Chargement des données...
+        </div>
+      `;
+    }
+
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.period === currentPeriod);
+    });
+
     try {
       const apiPeriod = PERIOD_MAP[currentPeriod] || 'today';
       const data = await apiGet('aggregate-stats', { period: apiPeriod });
-      render(data);
+      renderContent(data);
     } catch (err) {
       console.error('Overview load error:', err);
-      // Show error state
-      const content = document.querySelector('.dashboard-content');
       if (content) {
         content.innerHTML = `
           <div class="card" style="text-align:center;padding:40px;">
             <p style="color:var(--accent-red);margin-bottom:12px;">Erreur de chargement</p>
             <p style="color:var(--text-muted);font-size:0.875rem;">${err.message}</p>
-            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">R\u00e9essayer</button>
+            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">Réessayer</button>
           </div>
         `;
       }
@@ -280,4 +297,7 @@ export default async function OverviewPage(app) {
 
   // Initial load
   loadData();
+
+  // Return cleanup function
+  return () => { destroyCharts(); };
 }
