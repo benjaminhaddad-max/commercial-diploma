@@ -42,7 +42,7 @@ async function findDealsToMigrate() {
     sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
   };
 
-  return searchObjects('deals', searchBody, 500);
+  return searchObjects('deals', searchBody, 5000);
 }
 
 module.exports = async function handler(req, res) {

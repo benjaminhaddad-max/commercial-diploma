@@ -1,6 +1,7 @@
 {
   "functions": {
-    "api/cache-refresh.js": { "maxDuration": 60 }
+    "api/cache-refresh.js": { "maxDuration": 60 },
+    "api/hubspot-migrate.js": { "maxDuration": 120 }
   },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
