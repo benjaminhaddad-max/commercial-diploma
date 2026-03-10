@@ -121,12 +121,18 @@ async function fetchFromDB(req, res, { from, to, agent }) {
     return res.status(500).json({ error: 'Erreur base de données' });
   }
 
-  // Auto-sync from Aircall API if DB is empty (first load after purge)
+  // Auto-sync only if the entire calls_log table is empty (first load after purge)
+  // Don't auto-sync just because a specific date range has no results
   if (!data || data.length === 0) {
-    console.log('calls_log empty, auto-syncing from Aircall API...');
-    // Re-run handler without source=db to fetch from Aircall
-    req.query.source = 'api';
-    return module.exports(req, res);
+    const { count } = await supabase
+      .from('calls_log')
+      .select('*', { count: 'exact', head: true });
+
+    if (count === 0) {
+      console.log('calls_log table empty, auto-syncing from Aircall API...');
+      req.query.source = 'api';
+      return module.exports(req, res);
+    }
   }
 
   const calls = (data || []).map(c => ({

@@ -47,37 +47,42 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Erreur base de données' });
     }
 
-    // Auto-sync from Aircall if calls_log is empty (first load)
+    // Auto-sync from Aircall only if the entire calls_log table is empty (first load)
     if (!calls || calls.length === 0) {
-      console.log('calls_log empty for aggregate-stats, syncing from Aircall...');
-      try {
-        const fromUnix = Math.floor(from.getTime() / 1000);
-        const toUnix = Math.floor(to.getTime() / 1000);
-        const apiCalls = await fetchTeamCalls({ from: fromUnix, to: toUnix }, 10);
-        if (apiCalls.length > 0) {
-          const rows = apiCalls.map(c => ({
-            aircall_call_id: c.id,
-            agent_name: c.user ? c.user.name : null,
-            agent_aircall_id: c.user ? c.user.id : null,
-            direction: c.direction,
-            duration: c.duration || 0,
-            talking_duration: c.answered_at && c.ended_at ? c.ended_at - c.answered_at : 0,
-            status: c.missed_call_reason ? 'missed' : c.voicemail ? 'voicemail' : c.answered_at ? 'answered' : 'missed',
-            started_at: c.started_at ? new Date(c.started_at * 1000).toISOString() : null,
-            answered_at: c.answered_at ? new Date(c.answered_at * 1000).toISOString() : null,
-            ended_at: c.ended_at ? new Date(c.ended_at * 1000).toISOString() : null,
-            number_from: c.raw_digits,
-            number_to: c.number ? c.number.digits : null,
-            tags: c.tags || [],
-          }));
-          await supabase.from('calls_log').upsert(rows, { onConflict: 'aircall_call_id', ignoreDuplicates: false });
-          // Re-read from DB after sync
-          const { data: freshCalls } = await supabase.from('calls_log').select('*')
-            .gte('started_at', from.toISOString()).lte('started_at', to.toISOString());
-          calls = freshCalls || [];
+      const { count } = await supabase
+        .from('calls_log')
+        .select('*', { count: 'exact', head: true });
+
+      if (count === 0) {
+        console.log('calls_log table empty, syncing from Aircall...');
+        try {
+          const fromUnix = Math.floor(from.getTime() / 1000);
+          const toUnix = Math.floor(to.getTime() / 1000);
+          const apiCalls = await fetchTeamCalls({ from: fromUnix, to: toUnix }, 10);
+          if (apiCalls.length > 0) {
+            const rows = apiCalls.map(c => ({
+              aircall_call_id: c.id,
+              agent_name: c.user ? c.user.name : null,
+              agent_aircall_id: c.user ? c.user.id : null,
+              direction: c.direction,
+              duration: c.duration || 0,
+              talking_duration: c.answered_at && c.ended_at ? c.ended_at - c.answered_at : 0,
+              status: c.missed_call_reason ? 'missed' : c.voicemail ? 'voicemail' : c.answered_at ? 'answered' : 'missed',
+              started_at: c.started_at ? new Date(c.started_at * 1000).toISOString() : null,
+              answered_at: c.answered_at ? new Date(c.answered_at * 1000).toISOString() : null,
+              ended_at: c.ended_at ? new Date(c.ended_at * 1000).toISOString() : null,
+              number_from: c.raw_digits,
+              number_to: c.number ? c.number.digits : null,
+              tags: c.tags || [],
+            }));
+            await supabase.from('calls_log').upsert(rows, { onConflict: 'aircall_call_id', ignoreDuplicates: false });
+            const { data: freshCalls } = await supabase.from('calls_log').select('*')
+              .gte('started_at', from.toISOString()).lte('started_at', to.toISOString());
+            calls = freshCalls || [];
+          }
+        } catch (syncErr) {
+          console.error('Auto-sync failed:', syncErr.message);
         }
-      } catch (syncErr) {
-        console.error('Auto-sync failed:', syncErr.message);
       }
     }
 
