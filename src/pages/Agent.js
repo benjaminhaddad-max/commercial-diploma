@@ -1,98 +1,206 @@
 import { requireAuth } from '../auth.js';
+import { apiGet } from '../api.js';
 import { renderSidebar, bindSidebarEvents } from '../components/Sidebar.js';
 import { renderHeader, bindHeaderEvents } from '../components/Header.js';
 import { renderStatCard } from '../components/StatCard.js';
 import { formatNumber, formatDuration, formatPercent, scoreColor } from '../utils/numbers.js';
 
+const PERIOD_MAP = { today: 'today', week: 'week', month: 'month', last30: '30d' };
+
 export default async function AgentPage(app, params) {
   const profile = await requireAuth();
   if (!profile) return;
 
-  // Demo agent data
-  const agent = {
-    name: 'Marie L.',
-    role: 'Télépro',
-    score: 85,
-    calls: 48,
-    avgDuration: 720,
-    tauxDecroché: 45,
-    rdv: 8,
-    tauxRdv: 35,
-    dossiers: 3,
-    callsOver10min: 62,
-  };
+  const agentId = params?.id;
+  let currentPeriod = 'today';
 
-  const teamAvg = {
-    calls: 37,
-    avgDuration: 450,
-    tauxDecroché: 38,
-    rdv: 5,
-    tauxRdv: 22,
-    score: 68,
-    callsOver10min: 42,
-  };
+  if (!agentId) {
+    app.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted);">Agent non trouv\u00e9</div>';
+    return;
+  }
 
-  app.innerHTML = `
-    <div class="dashboard-layout">
-      ${renderSidebar(profile)}
-      <div class="dashboard-main">
-        ${renderHeader(agent.name, { showFilters: true })}
-        <div class="dashboard-content">
-          <!-- Agent header -->
-          <div class="card" style="margin-bottom:24px;">
-            <div style="display:flex;align-items:center;gap:20px;">
-              <div style="width:64px;height:64px;border-radius:50%;background:var(--accent-blue-dim);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--accent-blue);">
-                ${agent.name.split(' ').map(w => w[0]).join('')}
+  function renderPage(agent, teamAvg) {
+    app.innerHTML = `
+      <div class="dashboard-layout">
+        ${renderSidebar(profile)}
+        <div class="dashboard-main">
+          ${renderHeader(agent.name, { showFilters: true })}
+          <div class="dashboard-content">
+            <!-- Agent header -->
+            <div class="card" style="margin-bottom:24px;">
+              <div style="display:flex;align-items:center;gap:20px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--accent-blue-dim);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--accent-blue);">
+                  ${agent.name.split(' ').map(w => w[0]).join('').substring(0, 2)}
+                </div>
+                <div style="flex:1;">
+                  <h2 style="margin-bottom:4px;">${agent.name}</h2>
+                  <span style="font-size:0.8125rem;color:var(--accent-blue);">Agent Aircall</span>
+                </div>
+                <span class="score-badge ${agent.scoreColor === 'green' ? 'good' : agent.scoreColor === 'orange' ? 'medium' : 'bad'}" style="font-size:1rem;padding:8px 16px;">
+                  Score: ${agent.score}/100
+                </span>
               </div>
-              <div style="flex:1;">
-                <h2 style="margin-bottom:4px;">${agent.name}</h2>
-                <span style="font-size:0.8125rem;color:var(--accent-blue);">${agent.role}</span>
+            </div>
+
+            <!-- KPIs -->
+            <div class="grid grid-4" style="margin-bottom:24px;">
+              ${renderStatCard({
+                label: 'Appels sortants',
+                value: formatNumber(agent.outbound),
+                change: teamAvg.outbound > 0 ? ((agent.outbound - teamAvg.outbound) / teamAvg.outbound * 100) : null,
+                score: scoreColor(agent.callsPerDay || 0, 40, 25),
+              })}
+              ${renderStatCard({
+                label: 'Dur\u00e9e moyenne',
+                value: formatDuration(agent.avgDuration),
+                score: scoreColor((agent.avgDuration || 0) / 60, 10, 5),
+              })}
+              ${renderStatCard({
+                label: 'Taux de d\u00e9croch\u00e9',
+                value: formatPercent(agent.pickupRate, 0),
+                score: scoreColor(agent.pickupRate || 0, 40, 25),
+              })}
+              ${renderStatCard({
+                label: 'Appels > 10 min',
+                value: formatPercent(agent.pctOver10min, 0),
+                score: scoreColor(agent.pctOver10min || 0, 50, 30),
+              })}
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-2" style="margin-bottom:24px;">
+              <div class="card">
+                <div class="card-header"><span class="card-title">R\u00e9partition des appels</span></div>
+                <div id="agentOutcomesChart" class="chart-container"></div>
               </div>
-              <span class="score-badge ${scoreColor(agent.score, 70, 50)}" style="font-size:1rem;padding:8px 16px;">
-                Score: ${agent.score}/100
-              </span>
+              <div class="card">
+                <div class="card-header"><span class="card-title">D\u00e9tails</span></div>
+                <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Total appels</span>
+                    <span style="font-weight:600;">${agent.total || 0}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Sortants</span>
+                    <span style="font-weight:600;color:var(--accent-blue);">${agent.outbound || 0}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Entrants</span>
+                    <span style="font-weight:600;color:var(--accent-purple);">${agent.inbound || 0}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">D\u00e9croch\u00e9s</span>
+                    <span style="font-weight:600;color:var(--accent-green);">${agent.answered || 0}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Manqu\u00e9s</span>
+                    <span style="font-weight:600;color:var(--accent-red);">${agent.missed || 0}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Appels > 10 min</span>
+                    <span style="font-weight:600;">${agent.callsOver10min || 0}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <!-- KPIs -->
-          <div class="grid grid-4" style="margin-bottom:24px;">
-            ${renderStatCard({ label: 'Appels sortants', value: formatNumber(agent.calls), change: ((agent.calls - teamAvg.calls) / teamAvg.calls * 100), score: scoreColor(agent.calls, 40, 25) })}
-            ${renderStatCard({ label: 'Durée moyenne', value: formatDuration(agent.avgDuration), score: scoreColor(agent.avgDuration / 60, 10, 5) })}
-            ${renderStatCard({ label: 'RDV pris', value: formatNumber(agent.rdv), color: 'var(--accent-purple)' })}
-            ${renderStatCard({ label: 'Appels > 10 min', value: formatPercent(agent.callsOver10min, 0), score: scoreColor(agent.callsOver10min, 50, 30) })}
-          </div>
-
-          <!-- Charts -->
-          <div class="grid grid-2" style="margin-bottom:24px;">
+            <!-- Comparison vs team -->
             <div class="card">
-              <div class="card-header"><span class="card-title">Activité sur 30 jours</span></div>
-              <div id="agentActivityChart" class="chart-container"></div>
-            </div>
-            <div class="card">
-              <div class="card-header"><span class="card-title">Outcomes des appels</span></div>
-              <div id="agentOutcomesChart" class="chart-container"></div>
-            </div>
-          </div>
-
-          <!-- Comparison vs team -->
-          <div class="card">
-            <div class="card-header"><span class="card-title">Comparaison vs moyenne équipe</span></div>
-            <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
-              ${renderComparison('Appels/jour', agent.calls, teamAvg.calls)}
-              ${renderComparison('Durée moy. (min)', Math.round(agent.avgDuration / 60), Math.round(teamAvg.avgDuration / 60))}
-              ${renderComparison('Taux décroché', agent.tauxDecroché, teamAvg.tauxDecroché, '%')}
-              ${renderComparison('Taux RDV', agent.tauxRdv, teamAvg.tauxRdv, '%')}
-              ${renderComparison('Appels > 10min', agent.callsOver10min, teamAvg.callsOver10min, '%')}
+              <div class="card-header"><span class="card-title">Comparaison vs moyenne \u00e9quipe</span></div>
+              <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
+                ${renderComparison('Appels sortants', agent.outbound || 0, teamAvg.outbound || 0)}
+                ${renderComparison('Dur\u00e9e moy. (min)', Math.round((agent.avgDuration || 0) / 60), Math.round((teamAvg.avgDuration || 0) / 60))}
+                ${renderComparison('Taux d\u00e9croch\u00e9', agent.pickupRate || 0, teamAvg.pickupRate || 0, '%')}
+                ${renderComparison('Appels > 10min', agent.pctOver10min || 0, teamAvg.pctOver10min || 0, '%')}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  bindSidebarEvents();
-  bindHeaderEvents();
-  renderAgentCharts();
+    bindSidebarEvents();
+    bindHeaderEvents(
+      (period) => { currentPeriod = period; loadData(); },
+      () => loadData()
+    );
+
+    renderAgentCharts(agent);
+  }
+
+  function renderAgentCharts(agent) {
+    if (typeof ApexCharts === 'undefined') return;
+
+    const outcomesEl = document.getElementById('agentOutcomesChart');
+    if (outcomesEl) {
+      const answered = agent.answered || 0;
+      const missed = agent.missed || 0;
+
+      if (answered === 0 && missed === 0) {
+        outcomesEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Pas de donn\u00e9es</div>';
+        return;
+      }
+
+      new ApexCharts(outcomesEl, {
+        chart: { type: 'donut', height: 260, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter' },
+        theme: { mode: 'dark' },
+        colors: ['#34d399', '#f87171'],
+        series: [answered, missed],
+        labels: ['D\u00e9croch\u00e9s', 'Manqu\u00e9s'],
+        plotOptions: { pie: { donut: { size: '72%', labels: { show: true, name: { fontSize: '12px', color: '#9ca3b4' }, value: { fontSize: '20px', fontWeight: 700, color: '#f0f0f5' }, total: { show: true, label: 'Total', fontSize: '12px', color: '#9ca3b4' } } } } },
+        dataLabels: { enabled: false },
+        stroke: { width: 0 },
+        legend: { position: 'bottom', fontSize: '11px', labels: { colors: '#9ca3b4' } },
+      }).render();
+    }
+  }
+
+  async function loadData() {
+    // Show loading
+    app.innerHTML = `
+      <div class="dashboard-layout">
+        ${renderSidebar(profile)}
+        <div class="dashboard-main">
+          ${renderHeader('Agent')}
+          <div class="dashboard-content">
+            <div style="text-align:center;padding:60px 0;color:var(--text-muted);">Chargement...</div>
+          </div>
+        </div>
+      </div>
+    `;
+    bindSidebarEvents();
+    bindHeaderEvents(
+      (period) => { currentPeriod = period; loadData(); },
+      () => loadData()
+    );
+
+    try {
+      const apiPeriod = PERIOD_MAP[currentPeriod] || 'today';
+      // Fetch stats for this specific agent
+      const data = await apiGet('aggregate-stats', { period: apiPeriod, agent: agentId });
+      const agentStats = data.agents && data.agents.length > 0 ? data.agents[0] : data.stats;
+
+      // Also get team average for comparison
+      const teamData = await apiGet('aggregate-stats', { period: apiPeriod });
+      const teamAvg = teamData.stats || {};
+
+      renderPage(agentStats, teamAvg);
+    } catch (err) {
+      console.error('Agent load error:', err);
+      const content = document.querySelector('.dashboard-content');
+      if (content) {
+        content.innerHTML = `
+          <div class="card" style="text-align:center;padding:40px;">
+            <p style="color:var(--accent-red);margin-bottom:12px;">Erreur de chargement</p>
+            <p style="color:var(--text-muted);font-size:0.875rem;">${err.message}</p>
+            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.hash='#/leaderboard'">Retour au classement</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  loadData();
 }
 
 function renderComparison(label, agentVal, teamVal, suffix = '') {
@@ -114,43 +222,7 @@ function renderComparison(label, agentVal, teamVal, suffix = '') {
           <span style="font-size:0.75rem;color:var(--text-muted);">Moy: ${teamVal}${suffix}</span>
         </div>
       </div>
-      <span style="font-size:0.8125rem;font-weight:600;color:${diffColor};min-width:60px;text-align:right;">${diffSign}${diff}${suffix}</span>
+      <span style="font-size:0.8125rem;font-weight:600;color:${diffColor};min-width:60px;text-align:right;">${diffSign}${Math.round(diff)}${suffix}</span>
     </div>
   `;
-}
-
-function renderAgentCharts() {
-  if (typeof ApexCharts === 'undefined') return;
-
-  const activityEl = document.getElementById('agentActivityChart');
-  if (activityEl) {
-    const data = Array.from({ length: 30 }, () => Math.floor(Math.random() * 20) + 25);
-    new ApexCharts(activityEl, {
-      chart: { type: 'area', height: 260, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter', toolbar: { show: false } },
-      theme: { mode: 'dark' },
-      colors: ['#4f8cff'],
-      series: [{ name: 'Appels', data }],
-      xaxis: { categories: data.map((_, i) => `J-${30 - i}`), axisBorder: { show: false }, axisTicks: { show: false }, labels: { show: false } },
-      stroke: { curve: 'smooth', width: 2 },
-      fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 95, 100] } },
-      grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
-      dataLabels: { enabled: false },
-      tooltip: { theme: 'dark' },
-    }).render();
-  }
-
-  const outcomesEl = document.getElementById('agentOutcomesChart');
-  if (outcomesEl) {
-    new ApexCharts(outcomesEl, {
-      chart: { type: 'donut', height: 260, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter' },
-      theme: { mode: 'dark' },
-      colors: ['#34d399', '#4f8cff', '#fbbf24', '#f87171'],
-      series: [8, 22, 12, 6],
-      labels: ['RDV pris', 'Rappeler', 'Pas intéressé', 'Ne répond pas'],
-      plotOptions: { pie: { donut: { size: '72%', labels: { show: true, name: { fontSize: '12px', color: '#9ca3b4' }, value: { fontSize: '20px', fontWeight: 700, color: '#f0f0f5' }, total: { show: true, label: 'Total', fontSize: '12px', color: '#9ca3b4' } } } } },
-      dataLabels: { enabled: false },
-      stroke: { width: 0 },
-      legend: { position: 'bottom', fontSize: '11px', labels: { colors: '#9ca3b4' } },
-    }).render();
-  }
 }

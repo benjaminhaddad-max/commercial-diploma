@@ -1,26 +1,11 @@
 import { requireAuth } from '../auth.js';
+import { apiGet } from '../api.js';
 import { renderSidebar, bindSidebarEvents } from '../components/Sidebar.js';
 import { renderHeader, bindHeaderEvents } from '../components/Header.js';
 import { renderStatCard, renderStatCardSkeleton } from '../components/StatCard.js';
 import { formatNumber, formatDuration, formatPercent, scoreColor } from '../utils/numbers.js';
 
-// Demo data for initial development (replaced by real API calls later)
-function getDemoStats() {
-  return {
-    calls: { total: 187, outbound: 152, inbound: 35, missed: 18, avgDuration: 482 },
-    meetings: { total: 28, bookedToday: 6 },
-    deals: { finalized: 4, inProgress: 12 },
-    score: 72,
-    trends: {
-      calls: 8.3,
-      decroché: -2.1,
-      duration: 12.5,
-      meetings: 15.0,
-      deals: -5.0,
-      score: 3.2,
-    },
-  };
-}
+const PERIOD_MAP = { today: 'today', week: 'week', month: 'month', last30: '30d' };
 
 export default async function OverviewPage(app) {
   const profile = await requireAuth();
@@ -28,11 +13,36 @@ export default async function OverviewPage(app) {
 
   let currentPeriod = 'today';
 
-  function render(stats) {
-    const s = stats || getDemoStats();
-    const tauxDecroché = s.calls.total > 0
-      ? ((s.calls.total - s.calls.missed) / s.calls.total * 100)
-      : 0;
+  function renderSkeleton() {
+    app.innerHTML = `
+      <div class="dashboard-layout">
+        ${renderSidebar(profile)}
+        <div class="dashboard-main">
+          ${renderHeader('Vue d\'ensemble')}
+          <div class="dashboard-content">
+            <div class="grid grid-6" style="margin-bottom:24px;">
+              ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
+              ${renderStatCardSkeleton()}${renderStatCardSkeleton()}${renderStatCardSkeleton()}
+            </div>
+            <div style="text-align:center;padding:60px 0;color:var(--text-muted);">
+              Chargement des donn\u00e9es...
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    bindSidebarEvents();
+    bindHeaderEvents(
+      (period) => { currentPeriod = period; loadData(); },
+      () => loadData()
+    );
+  }
+
+  function render(data) {
+    const s = data.stats;
+    const t = data.trends;
+    const agents = data.agents || [];
+    const outcomes = data.outcomes || {};
 
     app.innerHTML = `
       <div class="dashboard-layout">
@@ -44,38 +54,36 @@ export default async function OverviewPage(app) {
             <div class="grid grid-6" style="margin-bottom:24px;">
               ${renderStatCard({
                 label: 'Appels sortants',
-                value: formatNumber(s.calls.outbound),
-                change: s.trends.calls,
+                value: formatNumber(s.outbound),
+                change: t.outbound,
                 color: 'var(--accent-blue)',
               })}
               ${renderStatCard({
-                label: 'Taux de décroché',
-                value: formatPercent(tauxDecroché, 0),
-                change: s.trends.decroché,
-                score: scoreColor(tauxDecroché, 40, 25),
+                label: 'Taux de d\u00e9croch\u00e9',
+                value: formatPercent(s.pickupRate, 0),
+                change: t.decroch\u00e9,
+                score: scoreColor(s.pickupRate, 40, 25),
               })}
               ${renderStatCard({
-                label: 'Durée moyenne',
-                value: formatDuration(s.calls.avgDuration),
-                change: s.trends.duration,
-                score: scoreColor(s.calls.avgDuration / 60, 10, 5),
+                label: 'Dur\u00e9e moyenne',
+                value: formatDuration(s.avgDuration),
+                change: t.duration,
+                score: scoreColor(s.avgDuration / 60, 10, 5),
               })}
               ${renderStatCard({
                 label: 'RDV pris',
-                value: formatNumber(s.meetings.total),
-                change: s.trends.meetings,
+                value: '—',
                 color: 'var(--accent-purple)',
               })}
               ${renderStatCard({
-                label: 'Dossiers finalisés',
-                value: formatNumber(s.deals.finalized),
-                change: s.trends.deals,
+                label: 'Dossiers finalis\u00e9s',
+                value: '—',
                 color: 'var(--accent-green)',
               })}
               ${renderStatCard({
-                label: 'Score équipe',
+                label: 'Score \u00e9quipe',
                 value: s.score + '/100',
-                change: s.trends.score,
+                change: null,
                 score: scoreColor(s.score, 70, 50),
               })}
             </div>
@@ -122,71 +130,91 @@ export default async function OverviewPage(app) {
       () => loadData()
     );
 
-    renderCharts(s);
+    renderCallsChart(data.dailySeries || []);
     renderFunnel(s);
-    renderMiniLeaderboard();
+    renderMiniLeaderboard(agents);
+    renderOutcomesChart(outcomes);
   }
 
-  function renderCharts(s) {
-    // Calls area chart
-    if (typeof ApexCharts !== 'undefined') {
-      const callsEl = document.getElementById('callsChart');
-      if (callsEl) {
-        const chart = new ApexCharts(callsEl, {
-          chart: { type: 'area', height: 280, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter', toolbar: { show: false } },
-          theme: { mode: 'dark' },
-          colors: ['#4f8cff', '#a78bfa'],
-          series: [
-            { name: 'Sortants', data: [28, 35, 42, 31, 38, 45, 33] },
-            { name: 'Entrants', data: [5, 8, 6, 4, 7, 9, 5] },
-          ],
-          xaxis: { categories: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'], axisBorder: { show: false }, axisTicks: { show: false } },
-          stroke: { curve: 'smooth', width: 2 },
-          fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 95, 100] } },
-          grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
-          dataLabels: { enabled: false },
-          tooltip: { theme: 'dark' },
-        });
-        chart.render();
-      }
+  function renderCallsChart(series) {
+    if (typeof ApexCharts === 'undefined') return;
+    const el = document.getElementById('callsChart');
+    if (!el) return;
 
-      // Outcomes donut
-      const outcomesEl = document.getElementById('outcomesChart');
-      if (outcomesEl) {
-        const donut = new ApexCharts(outcomesEl, {
-          chart: { type: 'donut', height: 250, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter' },
-          theme: { mode: 'dark' },
-          colors: ['#34d399', '#4f8cff', '#fbbf24', '#f87171'],
-          series: [28, 95, 42, 18],
-          labels: ['RDV pris', 'Rappeler', 'Pas intéressé', 'Ne répond pas'],
-          plotOptions: { pie: { donut: { size: '72%', labels: { show: true, name: { fontSize: '13px', color: '#9ca3b4' }, value: { fontSize: '22px', fontWeight: 700, color: '#f0f0f5' }, total: { show: true, label: 'Total', fontSize: '13px', color: '#9ca3b4' } } } } },
-          dataLabels: { enabled: false },
-          stroke: { width: 0 },
-          legend: { position: 'bottom', fontSize: '12px', labels: { colors: '#9ca3b4' } },
-        });
-        donut.render();
-      }
+    const dates = series.map(d => d.date);
+    const outbound = series.map(d => d.outbound);
+    const inbound = series.map(d => d.inbound);
+
+    new ApexCharts(el, {
+      chart: { type: 'area', height: 280, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter', toolbar: { show: false } },
+      theme: { mode: 'dark' },
+      colors: ['#4f8cff', '#a78bfa'],
+      series: [
+        { name: 'Sortants', data: outbound },
+        { name: 'Entrants', data: inbound },
+      ],
+      xaxis: {
+        categories: dates.map(d => {
+          const dt = new Date(d);
+          return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+        }),
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+        labels: { rotate: -45, style: { fontSize: '10px' } },
+      },
+      stroke: { curve: 'smooth', width: 2 },
+      fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 95, 100] } },
+      grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+      dataLabels: { enabled: false },
+      tooltip: { theme: 'dark' },
+    }).render();
+  }
+
+  function renderOutcomesChart(outcomes) {
+    if (typeof ApexCharts === 'undefined') return;
+    const el = document.getElementById('outcomesChart');
+    if (!el) return;
+
+    const labels = Object.keys(outcomes);
+    const values = Object.values(outcomes);
+
+    if (values.every(v => v === 0)) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Pas de donn\u00e9es</div>';
+      return;
     }
+
+    new ApexCharts(el, {
+      chart: { type: 'donut', height: 250, background: 'transparent', foreColor: '#9ca3b4', fontFamily: 'Inter' },
+      theme: { mode: 'dark' },
+      colors: ['#34d399', '#f87171', '#fbbf24'],
+      series: values,
+      labels: labels,
+      plotOptions: { pie: { donut: { size: '72%', labels: { show: true, name: { fontSize: '13px', color: '#9ca3b4' }, value: { fontSize: '22px', fontWeight: 700, color: '#f0f0f5' }, total: { show: true, label: 'Total', fontSize: '13px', color: '#9ca3b4' } } } } },
+      dataLabels: { enabled: false },
+      stroke: { width: 0 },
+      legend: { position: 'bottom', fontSize: '12px', labels: { colors: '#9ca3b4' } },
+    }).render();
   }
 
-  function renderFunnel() {
+  function renderFunnel(s) {
     const container = document.getElementById('funnelContainer');
     if (!container) return;
 
     const steps = [
-      { label: 'Appels sortants', value: 152, color: 'var(--accent-blue)' },
-      { label: 'Décrochés', value: 134, color: 'var(--chart-2)' },
-      { label: 'Qualifiés', value: 89, color: 'var(--accent-purple)' },
-      { label: 'RDV pris', value: 28, color: 'var(--accent-orange)' },
-      { label: 'RDV effectués', value: 21, color: 'var(--chart-4)' },
-      { label: 'Dossiers finalisés', value: 4, color: 'var(--accent-green)' },
+      { label: 'Appels sortants', value: s.outbound || 0, color: 'var(--accent-blue)' },
+      { label: 'D\u00e9croch\u00e9s', value: s.answered || 0, color: 'var(--chart-2)' },
+      { label: 'RDV pris', value: 0, color: 'var(--accent-orange)' },
+      { label: 'RDV effectu\u00e9s', value: 0, color: 'var(--chart-4)' },
+      { label: 'Dossiers finalis\u00e9s', value: 0, color: 'var(--accent-green)' },
     ];
 
-    const maxVal = steps[0].value;
+    const maxVal = steps[0].value || 1;
 
     container.innerHTML = steps.map((step, i) => {
       const width = Math.max(15, (step.value / maxVal) * 100);
-      const rate = i > 0 ? ((step.value / steps[i - 1].value) * 100).toFixed(0) : null;
+      const rate = i > 0 && steps[i - 1].value > 0
+        ? ((step.value / steps[i - 1].value) * 100).toFixed(0)
+        : null;
 
       return `
         <div class="funnel-step">
@@ -200,28 +228,26 @@ export default async function OverviewPage(app) {
     }).join('');
   }
 
-  function renderMiniLeaderboard() {
+  function renderMiniLeaderboard(agents) {
     const container = document.getElementById('miniLeaderboard');
     if (!container) return;
 
-    const agents = [
-      { name: 'Marie L.', score: 85, calls: 48, rdv: 8 },
-      { name: 'Thomas R.', score: 78, calls: 42, rdv: 6 },
-      { name: 'Julie M.', score: 71, calls: 39, rdv: 5 },
-      { name: 'Lucas D.', score: 65, calls: 35, rdv: 4 },
-      { name: 'Sarah K.', score: 58, calls: 30, rdv: 3 },
-    ];
+    const top5 = agents.slice(0, 5);
+
+    if (top5.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">Pas de donn\u00e9es</div>';
+      return;
+    }
 
     container.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:8px;">
-        ${agents.map((agent, i) => {
-          const sc = agent.score >= 70 ? 'good' : agent.score >= 50 ? 'medium' : 'bad';
+        ${top5.map((agent, i) => {
+          const sc = agent.scoreColor === 'green' ? 'good' : agent.scoreColor === 'orange' ? 'medium' : 'bad';
           return `
-            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius-md);background:${i === 0 ? 'var(--bg-tertiary)' : 'transparent'};">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius-md);background:${i === 0 ? 'var(--bg-tertiary)' : 'transparent'};cursor:pointer;" onclick="location.hash='#/agent/${agent.agent_id}'">
               <span style="font-weight:700;color:var(--text-muted);width:20px;">#${i + 1}</span>
               <span style="flex:1;font-weight:500;font-size:0.875rem;">${agent.name}</span>
-              <span style="font-size:0.75rem;color:var(--text-muted);">${agent.calls} appels</span>
-              <span style="font-size:0.75rem;color:var(--accent-purple);">${agent.rdv} RDV</span>
+              <span style="font-size:0.75rem;color:var(--text-muted);">${agent.outbound || 0} appels</span>
               <span class="score-badge ${sc}">${agent.score}/100</span>
             </div>
           `;
@@ -231,11 +257,27 @@ export default async function OverviewPage(app) {
   }
 
   async function loadData() {
-    // For now use demo data. Will replace with API calls.
-    const stats = getDemoStats();
-    render(stats);
+    renderSkeleton();
+    try {
+      const apiPeriod = PERIOD_MAP[currentPeriod] || 'today';
+      const data = await apiGet('aggregate-stats', { period: apiPeriod });
+      render(data);
+    } catch (err) {
+      console.error('Overview load error:', err);
+      // Show error state
+      const content = document.querySelector('.dashboard-content');
+      if (content) {
+        content.innerHTML = `
+          <div class="card" style="text-align:center;padding:40px;">
+            <p style="color:var(--accent-red);margin-bottom:12px;">Erreur de chargement</p>
+            <p style="color:var(--text-muted);font-size:0.875rem;">${err.message}</p>
+            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">R\u00e9essayer</button>
+          </div>
+        `;
+      }
+    }
   }
 
-  // Initial render
-  render(getDemoStats());
+  // Initial load
+  loadData();
 }

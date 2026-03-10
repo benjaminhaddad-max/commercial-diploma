@@ -1,84 +1,125 @@
 import { requireAuth } from '../auth.js';
+import { apiGet } from '../api.js';
 import { renderSidebar, bindSidebarEvents } from '../components/Sidebar.js';
 import { renderHeader, bindHeaderEvents } from '../components/Header.js';
 import { formatNumber, formatDuration } from '../utils/numbers.js';
+
+const PERIOD_MAP = { today: 'today', week: 'week', month: 'month', last30: '30d' };
 
 export default async function LeaderboardPage(app) {
   const profile = await requireAuth();
   if (!profile) return;
 
-  const agents = [
-    { name: 'Marie L.', role: 'Télépro', score: 85, calls: 48, avgDuration: 720, rdv: 8, dossiers: 3 },
-    { name: 'Thomas R.', role: 'Closer', score: 78, calls: 42, avgDuration: 540, rdv: 6, dossiers: 4 },
-    { name: 'Julie M.', role: 'Télépro', score: 71, calls: 39, avgDuration: 480, rdv: 5, dossiers: 2 },
-    { name: 'Lucas D.', role: 'Télépro', score: 65, calls: 35, avgDuration: 360, rdv: 4, dossiers: 1 },
-    { name: 'Sarah K.', role: 'Closer', score: 58, calls: 30, avgDuration: 300, rdv: 3, dossiers: 1 },
-    { name: 'Ahmed B.', role: 'Télépro', score: 52, calls: 28, avgDuration: 240, rdv: 2, dossiers: 0 },
-  ];
+  let currentPeriod = 'today';
 
-  app.innerHTML = `
-    <div class="dashboard-layout">
-      ${renderSidebar(profile)}
-      <div class="dashboard-main">
-        ${renderHeader('Classement Équipe')}
-        <div class="dashboard-content">
-          <!-- Podium -->
-          <div class="card" style="margin-bottom:24px;">
-            <div class="card-header"><span class="card-title">Podium — Score Composite</span></div>
-            <div style="display:flex;justify-content:center;align-items:flex-end;gap:24px;padding:32px 0 16px;">
-              ${renderPodium(agents[1], 2, '120px')}
-              ${renderPodium(agents[0], 1, '160px')}
-              ${renderPodium(agents[2], 3, '100px')}
+  function renderPage(agents) {
+    app.innerHTML = `
+      <div class="dashboard-layout">
+        ${renderSidebar(profile)}
+        <div class="dashboard-main">
+          ${renderHeader('Classement \u00c9quipe')}
+          <div class="dashboard-content">
+            <!-- Podium -->
+            <div class="card" style="margin-bottom:24px;">
+              <div class="card-header"><span class="card-title">Podium — Score Composite</span></div>
+              <div style="display:flex;justify-content:center;align-items:flex-end;gap:24px;padding:32px 0 16px;">
+                ${agents.length >= 2 ? renderPodium(agents[1], 2, '120px') : ''}
+                ${agents.length >= 1 ? renderPodium(agents[0], 1, '160px') : ''}
+                ${agents.length >= 3 ? renderPodium(agents[2], 3, '100px') : ''}
+              </div>
+              ${agents.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted);">Pas de donn\u00e9es sur cette p\u00e9riode</div>' : ''}
             </div>
-          </div>
 
-          <!-- Full ranking -->
-          <div class="card">
-            <div class="card-header"><span class="card-title">Classement détaillé</span></div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Agent</th>
-                  <th>Rôle</th>
-                  <th>Appels</th>
-                  <th>Durée moy.</th>
-                  <th>RDV</th>
-                  <th>Dossiers</th>
-                  <th>Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${agents.map((a, i) => {
-                  const sc = a.score >= 70 ? 'good' : a.score >= 50 ? 'medium' : 'bad';
-                  return `
-                    <tr style="cursor:pointer;" onclick="location.hash='#/agent/${i + 1}'">
-                      <td style="font-weight:700;color:var(--text-muted);">${i + 1}</td>
-                      <td style="font-weight:500;color:var(--text-primary);">${a.name}</td>
-                      <td><span style="font-size:0.75rem;color:${a.role === 'Télépro' ? 'var(--accent-blue)' : 'var(--accent-purple)'};">${a.role}</span></td>
-                      <td>${a.calls}</td>
-                      <td>${formatDuration(a.avgDuration)}</td>
-                      <td style="color:var(--accent-purple);font-weight:600;">${a.rdv}</td>
-                      <td style="color:var(--accent-green);font-weight:600;">${a.dossiers}</td>
-                      <td><span class="score-badge ${sc}">${a.score}/100</span></td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
+            <!-- Full ranking -->
+            <div class="card">
+              <div class="card-header"><span class="card-title">Classement d\u00e9taill\u00e9</span></div>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Agent</th>
+                    <th>Appels sortants</th>
+                    <th>Dur\u00e9e moy.</th>
+                    <th>Taux d\u00e9croch\u00e9</th>
+                    <th>Appels > 10min</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${agents.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Aucune donn\u00e9e</td></tr>' : ''}
+                  ${agents.map((a, i) => {
+                    const sc = a.scoreColor === 'green' ? 'good' : a.scoreColor === 'orange' ? 'medium' : 'bad';
+                    return `
+                      <tr style="cursor:pointer;" onclick="location.hash='#/agent/${a.agent_id}'">
+                        <td style="font-weight:700;color:var(--text-muted);">${i + 1}</td>
+                        <td style="font-weight:500;color:var(--text-primary);">${a.name}</td>
+                        <td>${a.outbound || 0}</td>
+                        <td>${formatDuration(a.avgDuration)}</td>
+                        <td>${a.pickupRate || 0}%</td>
+                        <td>${a.pctOver10min || 0}%</td>
+                        <td><span class="score-badge ${sc}">${a.score}/100</span></td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
-  bindSidebarEvents();
-  bindHeaderEvents();
+    bindSidebarEvents();
+    bindHeaderEvents(
+      (period) => { currentPeriod = period; loadData(); },
+      () => loadData()
+    );
+  }
+
+  async function loadData() {
+    // Show loading
+    app.innerHTML = `
+      <div class="dashboard-layout">
+        ${renderSidebar(profile)}
+        <div class="dashboard-main">
+          ${renderHeader('Classement \u00c9quipe')}
+          <div class="dashboard-content">
+            <div style="text-align:center;padding:60px 0;color:var(--text-muted);">Chargement...</div>
+          </div>
+        </div>
+      </div>
+    `;
+    bindSidebarEvents();
+    bindHeaderEvents(
+      (period) => { currentPeriod = period; loadData(); },
+      () => loadData()
+    );
+
+    try {
+      const apiPeriod = PERIOD_MAP[currentPeriod] || 'today';
+      const data = await apiGet('aggregate-stats', { period: apiPeriod });
+      renderPage(data.agents || []);
+    } catch (err) {
+      console.error('Leaderboard load error:', err);
+      const content = document.querySelector('.dashboard-content');
+      if (content) {
+        content.innerHTML = `
+          <div class="card" style="text-align:center;padding:40px;">
+            <p style="color:var(--accent-red);margin-bottom:12px;">Erreur de chargement</p>
+            <p style="color:var(--text-muted);font-size:0.875rem;">${err.message}</p>
+            <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">R\u00e9essayer</button>
+          </div>
+        `;
+      }
+    }
+  }
+
+  loadData();
 }
 
 function renderPodium(agent, rank, height) {
   const colors = { 1: '#fbbf24', 2: '#9ca3b4', 3: '#cd7f32' };
-  const sc = agent.score >= 70 ? 'good' : agent.score >= 50 ? 'medium' : 'bad';
+  const sc = agent.scoreColor === 'green' ? 'good' : agent.scoreColor === 'orange' ? 'medium' : 'bad';
 
   return `
     <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">

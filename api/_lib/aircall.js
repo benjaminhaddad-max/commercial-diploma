@@ -70,11 +70,71 @@ async function fetchAllCalls(params = {}, maxPages = 20) {
 }
 
 /**
- * Fetch all Aircall users (agents)
+ * Fetch all Aircall teams
  */
-async function fetchUsers() {
-  const data = await aircallFetch('/users', { per_page: 50 });
-  return data.users || [];
+async function fetchTeams() {
+  const data = await aircallFetch('/teams', { per_page: 50 });
+  return data.teams || [];
 }
 
-module.exports = { aircallFetch, fetchAllCalls, fetchUsers };
+/**
+ * Fetch team by name (e.g. "Equipe commerciale")
+ * Returns the team object with its user IDs
+ */
+async function getTeamByName(name) {
+  const teams = await fetchTeams();
+  return teams.find(t => t.name.toLowerCase().includes(name.toLowerCase())) || null;
+}
+
+/**
+ * Get user IDs belonging to "Equipe commerciale"
+ * Caches the result for 5 minutes to avoid repeated API calls
+ */
+let _teamCache = { ids: null, ts: 0 };
+async function getCommercialTeamUserIds() {
+  // Cache for 5 minutes
+  if (_teamCache.ids && Date.now() - _teamCache.ts < 300000) {
+    return _teamCache.ids;
+  }
+
+  const team = await getTeamByName('commerciale');
+  if (!team) {
+    console.warn('Team "Equipe commerciale" not found in Aircall');
+    return null; // null = no filtering
+  }
+
+  const userIds = (team.users || []).map(u => typeof u === 'object' ? u.id : u);
+  _teamCache = { ids: userIds, ts: Date.now() };
+  return userIds;
+}
+
+/**
+ * Fetch all Aircall users (agents)
+ * If teamOnly=true, returns only users from "Equipe commerciale"
+ */
+async function fetchUsers(teamOnly = true) {
+  const data = await aircallFetch('/users', { per_page: 50 });
+  const allUsers = data.users || [];
+
+  if (!teamOnly) return allUsers;
+
+  const teamIds = await getCommercialTeamUserIds();
+  if (!teamIds) return allUsers; // fallback: return all if team not found
+
+  return allUsers.filter(u => teamIds.includes(u.id));
+}
+
+/**
+ * Fetch all calls, filtered to "Equipe commerciale" team members only
+ */
+async function fetchTeamCalls(params = {}, maxPages = 20) {
+  const allCalls = await fetchAllCalls(params, maxPages);
+
+  // Filter to commercial team only
+  const teamIds = await getCommercialTeamUserIds();
+  if (!teamIds) return allCalls; // no filtering if team not found
+
+  return allCalls.filter(c => c.user && teamIds.includes(c.user.id));
+}
+
+module.exports = { aircallFetch, fetchAllCalls, fetchTeamCalls, fetchUsers, fetchTeams, getCommercialTeamUserIds };
