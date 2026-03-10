@@ -31,8 +31,8 @@ module.exports = async function handler(req, res) {
 
     console.log(`Cache refresh: syncing calls from ${from.toISOString()} to ${now.toISOString()}`);
 
-    // Fetch from Aircall API (up to 40 pages = 2000 calls max)
-    const apiCalls = await fetchTeamCalls({ from: fromUnix, to: toUnix }, 40);
+    // Fetch from Aircall API (up to 15 pages = 750 calls max)
+    const apiCalls = await fetchTeamCalls({ from: fromUnix, to: toUnix }, 15);
 
     if (apiCalls.length === 0) {
       return res.status(200).json({ synced: 0, message: 'No calls found' });
