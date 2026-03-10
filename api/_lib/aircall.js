@@ -97,9 +97,9 @@ async function getCommercialTeamUserIds() {
     return _teamCache.ids;
   }
 
-  const team = await getTeamByName('commerciale');
+  const team = await getTeamByName('diploma commercial');
   if (!team) {
-    console.warn('Team "Equipe commerciale" not found in Aircall');
+    console.warn('Team "Diploma Commercial" not found in Aircall');
     return null; // null = no filtering
   }
 
@@ -125,12 +125,12 @@ async function fetchUsers(teamOnly = true) {
 }
 
 /**
- * Fetch all calls, filtered to "Equipe commerciale" team members only
+ * Fetch all calls, filtered to "Diploma Commercial" team members only
  */
 async function fetchTeamCalls(params = {}, maxPages = 20) {
   const allCalls = await fetchAllCalls(params, maxPages);
 
-  // Filter to commercial team only
+  // Filter to Diploma Commercial team only
   const teamIds = await getCommercialTeamUserIds();
   if (!teamIds) return allCalls; // no filtering if team not found
 
