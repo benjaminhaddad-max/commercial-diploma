@@ -121,6 +121,14 @@ async function fetchFromDB(req, res, { from, to, agent }) {
     return res.status(500).json({ error: 'Erreur base de données' });
   }
 
+  // Auto-sync from Aircall API if DB is empty (first load after purge)
+  if (!data || data.length === 0) {
+    console.log('calls_log empty, auto-syncing from Aircall API...');
+    // Re-run handler without source=db to fetch from Aircall
+    req.query.source = 'api';
+    return module.exports(req, res);
+  }
+
   const calls = (data || []).map(c => ({
     id: c.aircall_call_id,
     agent: c.agent_name || 'Inconnu',
